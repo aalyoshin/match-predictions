@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Прогнози на матч</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&family=Rubik:wght@400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100vh;background:#0b1020;
+  background-image:radial-gradient(60vw 40vh at 110% 110%, rgba(232,73,46,.16), transparent 60%),
+                   radial-gradient(50vw 30vh at -10% -10%, rgba(39,67,214,.22), transparent 60%);
+  color:#eef1f9;font-family:'Rubik',system-ui,sans-serif;padding:0 0 44px}
+.wrap{max-width:480px;margin:0 auto;padding:18px 14px}
+.h{font-family:'Oswald','Rubik',sans-serif;text-transform:uppercase;letter-spacing:.04em}
+.kicker{font-size:13px;color:#8b93ad}
+.title{font-size:34px;line-height:1.05;margin:2px 0 14px}
+.card{background:#121829;border:1px solid #26304f;border-radius:14px;padding:14px;margin-top:12px}
+.lbl{font-size:14px;color:#aab2cc;margin-bottom:6px}
+.input{width:100%;background:#0e1428;border:1px solid #3a4569;border-radius:11px;color:#eef1f9;
+  font-size:16px;padding:11px;font-family:'Rubik'}
+.input:focus{outline:none;border-color:#37e07c}
+.btn{display:block;width:100%;border:none;border-radius:11px;padding:13px;font-family:'Rubik';font-size:16px;
+  font-weight:500;cursor:pointer;margin-top:10px;color:#0b1020;background:#37e07c}
+.btn.ghost{background:transparent;color:#cdd4ea;border:1px solid #3a4569}
+.btn:active{transform:scale(.99)}
+.btn:disabled{opacity:.35;cursor:default}
+.row{display:flex;gap:8px}.row .btn{flex:1}
+.score{display:flex;align-items:center;justify-content:center;gap:10px;margin:4px 0 2px}
+.score .input{width:64px;text-align:center;font-family:'Oswald';font-size:26px;padding:8px}
+.score .sep{font-family:'Oswald';font-size:24px;color:#57608a}
+.tside{font-size:12px;color:#8b93ad;text-align:center;width:64px;margin-top:4px}
+.toggle{display:flex;gap:6px;margin-top:4px}
+.toggle button{flex:1;border-radius:10px;padding:10px;border:1px solid #3a4569;background:#0e1428;
+  color:#aab2cc;font-family:'Rubik';font-size:15px;cursor:pointer}
+.toggle button.on{background:#123b24;border-color:#37e07c;color:#d9ffe9}
+.who{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 0;
+  border-bottom:1px solid #232b47;font-size:15px}
+.who:last-child{border-bottom:none}
+.x{border:none;background:transparent;color:#ff6257;font-size:18px;cursor:pointer;padding:0 4px}
+.pass{text-align:center;padding:26px 0}
+.pass .nm{font-family:'Oswald';font-size:30px;color:#37e07c;margin:6px 0 2px}
+.tbl{width:100%;border-collapse:collapse;margin-top:6px;font-size:15px}
+.tbl th{font-family:'Oswald';text-transform:uppercase;font-size:12px;color:#8b93ad;text-align:left;
+  padding:6px 4px;border-bottom:1px solid #232b47;font-weight:500}
+.tbl td{padding:9px 4px;border-bottom:1px solid #1b2340}
+.tbl .pts{font-family:'Oswald';font-size:19px;text-align:right;color:#7df0ac}
+.tbl tr.top td{background:#0f2a1c}
+.chips{margin-top:3px}
+.chip{display:inline-block;font-size:11px;padding:2px 7px;border-radius:999px;background:#1a2340;
+  border:1px solid #3a4569;color:#aab2cc;margin:2px 4px 0 0}
+.chip.g{border-color:#2c9e5e;color:#9ff0c2}
+.note{font-size:13px;color:#8b93ad;margin-top:10px;line-height:1.5}
+.step{font-size:12px;color:#57608a;margin-top:12px}
+@media (prefers-reduced-motion: reduce){.btn:active{transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap"><div id="app"></div></div>
+<script>
+var S=null;
+function blank(){ return {st:"setup",a:"",b:"",p:[],i:0,R:null,v:[]}; }
+
+function save(){ try{ location.replace("#"+encodeURIComponent(JSON.stringify(S))); }catch(e){} }
+function load(){
+  var h=(location.hash||"").slice(1); if(!h) return false;
+  try{ var o=JSON.parse(decodeURIComponent(h)); if(o&&o.st){ S=o; return true; } }catch(e){}
+  return false;
+}
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function norm(s){ return String(s||"").toLowerCase().trim()
+  .replace(/[’'ʼ`]/g,"").replace(/[іїy]/g,"и").replace(/[єe]/g,"е").replace(/\s+/g," "); }
+function same(x,y){ x=norm(x); y=norm(y); if(!x||!y) return false;
+  if(x===y) return true;
+  if(x.length>4&&y.length>4&&(x.indexOf(y)>=0||y.indexOf(x)>=0)) return true;
+  return false; }
+function val(id){ var e=document.getElementById(id); return e?e.value:""; }
+function num(id){ var n=parseInt(val(id),10); return isNaN(n)||n<0?0:n; }
+
+/* ---------- підрахунок ---------- */
+function sign(n){ return n>0?1:(n<0?-1:0); }
+function pointsFor(pr,R,fsOk){
+  var d={score:0,fs:0,yc:0,pen:0,red:0};
+  if(pr.ga===R.ga&&pr.gb===R.gb) d.score=5;
+  else if(sign(pr.ga-pr.gb)===sign(R.ga-R.gb)){ d.score=(pr.ga-pr.gb===R.ga-R.gb)?3:2; }
+  if(fsOk) d.fs=3;
+  var dy=Math.abs(pr.yc-R.yc); d.yc = dy===0?2:(dy===1?1:0);
+  if(pr.pen===R.pen) d.pen=1;
+  if(pr.red===R.red) d.red=1;
+  d.total=d.score+d.fs+d.yc+d.pen+d.red;
+  return d;
+}
+
+/* ---------- екрани ---------- */
+function render(){ document.getElementById("app").innerHTML = ({
+  setup:vSetup, pass:vPass, predict:vPredict, ready:vReady, result:vResult, table:vTable
+})[S.st](); }
+
+function head(k,t){ return '<div class="kicker h">'+k+'</div><h1 class="title h">'+t+'</h1>'; }
+
+function vSetup(){
+  var list = S.p.length ? S.p.map(function(p,i){
+    return '<div class="who"><span>'+esc(p.name)+'</span>'+
+           '<button class="x" onclick="rmP('+i+')" aria-label="Прибрати">✕</button></div>';
+  }).join("") : '<div class="note">Поки нікого. Додай щонайменше двох.</div>';
+  return head("Перед стартовим свистком","Прогнози на матч")+
+  '<div class="card"><div class="lbl">Хто грає</div>'+
+   '<input class="input" id="ta" placeholder="Господарі" value="'+esc(S.a)+'">'+
+   '<div style="height:8px"></div>'+
+   '<input class="input" id="tb" placeholder="Гості" value="'+esc(S.b)+'"></div>'+
+  '<div class="card"><div class="lbl">Учасники</div>'+list+
+   '<input class="input" id="nm" placeholder="Імʼя" style="margin-top:10px">'+
+   '<button class="btn ghost" onclick="addP()">Додати учасника</button></div>'+
+  '<button class="btn" onclick="go()" '+(S.p.length<2?'disabled':'')+'>Почати прийом прогнозів</button>'+
+  '<div class="note">Телефон піде по колу: кожен вводить свій прогноз і передає далі. '+
+  'Прогнози інших на екрані не показуються.</div>';
+}
+function addP(){
+  var n=val("nm").trim(); S.a=val("ta"); S.b=val("tb");
+  if(n){ S.p.push({name:n,ga:0,gb:0,fs:"",yc:0,pen:false,red:false}); }
+  save(); render();
+}
+function rmP(i){ S.a=val("ta"); S.b=val("tb"); S.p.splice(i,1); save(); render(); }
+function go(){ S.a=val("ta")||"Господарі"; S.b=val("tb")||"Гості"; S.i=0; S.st="pass"; save(); render(); }
+
+function vPass(){
+  return head("Передай телефон","Наступний прогноз")+
+  '<div class="card pass"><div class="lbl">Зараз вводить</div>'+
+   '<div class="nm h">'+esc(S.p[S.i].name)+'</div>'+
+   '<div class="note">Решта — не підглядайте.</div></div>'+
+  '<button class="btn" onclick="S.st=\'predict\';save();render()">Це я, поїхали</button>'+
+  '<div class="step">'+(S.i+1)+' з '+S.p.length+'</div>';
+}
+
+function vPredict(){
+  var p=S.p[S.i];
+  return head(esc(S.a)+" — "+esc(S.b),"Прогноз: "+esc(p.name))+
+  '<div class="card"><div class="lbl">Рахунок</div>'+
+   '<div class="score"><input class="input" id="ga" type="number" min="0" max="20" value="'+p.ga+'">'+
+   '<span class="sep">:</span><input class="input" id="gb" type="number" min="0" max="20" value="'+p.gb+'"></div>'+
+   '<div class="row" style="justify-content:center"><div class="tside">'+esc(S.a)+'</div>'+
+   '<div class="tside">'+esc(S.b)+'</div></div></div>'+
+  '<div class="card"><div class="lbl">Автор першого гола</div>'+
+   '<input class="input" id="fs" placeholder="Прізвище або «не буде голів»" value="'+esc(p.fs)+'"></div>'+
+  '<div class="card"><div class="lbl">Жовтих карток у матчі</div>'+
+   '<input class="input" id="yc" type="number" min="0" max="20" value="'+p.yc+'"></div>'+
+  '<div class="card"><div class="lbl">Буде призначено пенальті</div>'+
+   tog("pen",p.pen)+
+   '<div class="lbl" style="margin-top:14px">Буде червона картка</div>'+
+   tog("red",p.red)+'</div>'+
+  '<button class="btn" onclick="savePred()">Прогноз готовий</button>';
+}
+function tog(k,v){
+  return '<div class="toggle">'+
+  '<button class="'+(v?"on":"")+'" onclick="setTog(\''+k+'\',true)">Так</button>'+
+  '<button class="'+(!v?"on":"")+'" onclick="setTog(\''+k+'\',false)">Ні</button></div>';
+}
+function setTog(k,v){ grab(); S.p[S.i][k]=v; save(); render(); }
+function grab(){ var p=S.p[S.i]; p.ga=num("ga"); p.gb=num("gb"); p.fs=val("fs"); p.yc=num("yc"); }
+function savePred(){
+  grab(); S.i++;
+  S.st = S.i<S.p.length ? "pass" : "ready";
+  save(); render();
+}
+
+function vReady(){
+  return head("Прогнози прийнято","Дивимось матч")+
+  '<div class="card"><div class="lbl">Учасників</div>'+
+   '<div class="h" style="font-size:30px">'+S.p.length+'</div>'+
+   '<div class="note">Повертайся сюди після фінального свистка. '+
+   'Дані живуть в адресі сторінки, тож вкладку можна закрити — головне зберегти посилання.</div></div>'+
+  '<button class="btn" onclick="S.st=\'result\';S.R={ga:0,gb:0,fs:\'\',yc:0,pen:false,red:false};'+
+  'S.v=S.p.map(function(){return false});save();render()">Ввести результат матчу</button>';
+}
+
+function vResult(){
+  var R=S.R;
+  var checks=S.p.map(function(p,i){
+    return '<div class="who"><span>'+esc(p.name)+' — '+esc(p.fs||"—")+'</span>'+
+    '<button class="x" style="color:'+(S.v[i]?"#37e07c":"#57608a")+'" onclick="flip('+i+')">'+
+    (S.v[i]?"✔":"✕")+'</button></div>';
+  }).join("");
+  return head("Фінальний свисток","Що сталося")+
+  '<div class="card"><div class="lbl">Рахунок</div>'+
+   '<div class="score"><input class="input" id="rga" type="number" min="0" value="'+R.ga+'">'+
+   '<span class="sep">:</span><input class="input" id="rgb" type="number" min="0" value="'+R.gb+'"></div>'+
+   '<div class="row" style="justify-content:center"><div class="tside">'+esc(S.a)+'</div>'+
+   '<div class="tside">'+esc(S.b)+'</div></div></div>'+
+  '<div class="card"><div class="lbl">Автор першого гола</div>'+
+   '<input class="input" id="rfs" value="'+esc(R.fs)+'" placeholder="Прізвище або «не було голів»">'+
+   '<button class="btn ghost" onclick="autoFs()">Звірити з прогнозами</button>'+
+   '<div class="lbl" style="margin-top:12px">Кому зарахувати</div>'+checks+
+   '<div class="note">Автозвірка дивиться на прізвище. Якщо помилилась — виправ тапом.</div></div>'+
+  '<div class="card"><div class="lbl">Жовтих карток</div>'+
+   '<input class="input" id="ryc" type="number" min="0" value="'+R.yc+'">'+
+   '<div class="lbl" style="margin-top:14px">Пенальті призначали</div>'+rtog("pen",R.pen)+
+   '<div class="lbl" style="margin-top:14px">Червона картка була</div>'+rtog("red",R.red)+'</div>'+
+  '<button class="btn" onclick="finish()">Показати підсумки</button>';
+}
+function rtog(k,v){
+  return '<div class="toggle">'+
+  '<button class="'+(v?"on":"")+'" onclick="setR(\''+k+'\',true)">Так</button>'+
+  '<button class="'+(!v?"on":"")+'" onclick="setR(\''+k+'\',false)">Ні</button></div>';
+}
+function grabR(){ S.R.ga=num("rga"); S.R.gb=num("rgb"); S.R.fs=val("rfs"); S.R.yc=num("ryc"); }
+function setR(k,v){ grabR(); S.R[k]=v; save(); render(); }
+function flip(i){ grabR(); S.v[i]=!S.v[i]; save(); render(); }
+function autoFs(){ grabR(); S.v=S.p.map(function(p){ return same(p.fs,S.R.fs); }); save(); render(); }
+function finish(){ grabR(); S.st="table"; save(); render(); }
+
+function vTable(){
+  var R=S.R;
+  var rows=S.p.map(function(p,i){ var d=pointsFor(p,R,S.v[i]); return {p:p,d:d}; })
+    .sort(function(x,y){ return y.d.total-x.d.total; });
+  var best=rows.length?rows[0].d.total:0;
+  var body=rows.map(function(r){
+    var c=[];
+    if(r.d.score) c.push('<span class="chip g">рахунок +'+r.d.score+'</span>');
+    if(r.d.fs) c.push('<span class="chip g">перший гол +3</span>');
+    if(r.d.yc) c.push('<span class="chip g">картки +'+r.d.yc+'</span>');
+    if(r.d.pen) c.push('<span class="chip g">пенальті +1</span>');
+    if(r.d.red) c.push('<span class="chip g">червона +1</span>');
+    if(!c.length) c.push('<span class="chip">нічого не зайшло</span>');
+    return '<tr class="'+(r.d.total===best&&best>0?"top":"")+'"><td>'+esc(r.p.name)+
+      '<div class="chips">'+c.join("")+'</div>'+
+      '<div class="note" style="margin-top:4px">прогноз '+r.p.ga+':'+r.p.gb+
+      (r.p.fs?", "+esc(r.p.fs):"")+'</div></td>'+
+      '<td class="pts">'+r.d.total+'</td></tr>';
+  }).join("");
+  return head(esc(S.a)+" "+R.ga+":"+R.gb+" "+esc(S.b),"Підсумки")+
+  '<div class="card"><table class="tbl"><tr><th>Учасник</th><th style="text-align:right">Очки</th></tr>'+
+   body+'</table></div>'+
+  '<div class="card"><div class="lbl">Як нараховувалось</div><div class="note">'+
+   'Точний рахунок — 5, вгадана різниця мячів — 3, просто правильний результат — 2. '+
+   'Автор першого гола — 3. Жовті картки: точно — 2, помилка на одну — 1. '+
+   'Пенальті — 1, червона — 1. Максимум 12.</div></div>'+
+  '<button class="btn ghost" onclick="reset()">Новий матч</button>';
+}
+function reset(){ S=blank(); location.replace("#"); render(); }
+
+if(!load()) S=blank();
+render();
+</script>
+</body>
+</html>
